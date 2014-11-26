@@ -20,15 +20,19 @@ object RunRecommender {
 
   def main(args: Array[String]): Unit = {
     val sc = new SparkContext(new SparkConf().setAppName("Recommender"))
-    val base = "hdfs:///user/ds/"
-    val rawUserArtistData = sc.textFile(base + "user_artist_data.txt")
-    val rawArtistData = sc.textFile(base + "artist_data.txt")
-    val rawArtistAlias = sc.textFile(base + "artist_alias.txt")
-
-    preparation(rawUserArtistData, rawArtistData, rawArtistAlias)
-    model(sc, rawUserArtistData, rawArtistData, rawArtistAlias)
-    evaluate(sc, rawUserArtistData, rawArtistAlias)
-    recommend(sc, rawUserArtistData, rawArtistData, rawArtistAlias)
+    val base = "hdfs://hadoop41.rutgers.edu:7000/user/tz69"
+    // val rawUserArtistData = sc.textFile(base + "user_artist_data.txt")
+    // val rawArtistData = sc.textFile(base + "artist_data.txt")
+    // val rawArtistAlias = sc.textFile(base + "artist_alias.txt")
+    val  rawreads = sc.textFile(base + "reads.txt")
+    // preparation(rawUserArtistData, rawArtistData, rawArtistAlias)
+    // model(sc, rawUserArtistData, rawArtistData, rawArtistAlias)
+    // evaluate(sc, rawUserArtistData, rawArtistAlias)
+    // recommend(sc, rawUserArtistData, rawArtistData, rawArtistAlias)
+    preparation(rawreads)
+    model(sc,rawreads)
+    evaluate(sc,rawreads)
+    recommend(sc,rawreads)
   }
 
   def buildArtistByID(rawArtistData: RDD[String]) =
@@ -55,67 +59,74 @@ object RunRecommender {
       }
     }.collectAsMap()
 
+  def hash(x: String) = x.hashCode & 0x7FFFFF
+
   def preparation(
-      rawUserArtistData: RDD[String],
-      rawArtistData: RDD[String],
-      rawArtistAlias: RDD[String]) = {
-    val userIDStats = rawUserArtistData.map(_.split(' ')(0).toDouble).stats()
-    val itemIDStats = rawUserArtistData.map(_.split(' ')(1).toDouble).stats()
-    println(userIDStats)
-    println(itemIDStats)
+      // rawUserArtistData: RDD[String],
+      // rawArtistData: RDD[String],
+      // rawArtistAlias: RDD[String]) 
+      rawreads: RDD[String] )= {
+    val userIDStats = rawreads.map(_.split(' ')(0).toDouble).stats()
+    val itemIDStats = rawreads.map(_.split(' ')(3).hash).stats()
+    // println(userIDStats)
+    // println(itemIDStats)
 
-    val artistByID = buildArtistByID(rawArtistData)
-    val artistAlias = buildArtistAlias(rawArtistAlias)
+    // val artistByID = buildArtistByID(rawArtistData)
+    // val artistAlias = buildArtistAlias(rawArtistAlias)
 
-    val (badID, goodID) = artistAlias.head
-    println(artistByID.lookup(badID) + " -> " + artistByID.lookup(goodID))
-  }
+  //   val (badID, goodID) = artistAlias.head
+  //   println(artistByID.lookup(badID) + " -> " + artistByID.lookup(goodID))
+  // }
+      }
 
   def buildRatings(
-      rawUserArtistData: RDD[String],
-      artistAliasBC: Broadcast[Map[Int,Int]]) = {
-    rawUserArtistData.map { line =>
+      // rawUserArtistData: RDD[String],
+      // artistAliasBC: Broadcast[Map[Int,Int]]) = 
+      rawreads: RDD[String])={
+      rawreads.map { line =>
       val tokens = line.split(' ')
       val userID = tokens(0).toInt
-      val originalArtistID = tokens(1).toInt
-      val count = tokens(2).toInt
-      val artistID = artistAliasBC.value.getOrElse(originalArtistID, originalArtistID)
-      Rating(userID, artistID, count)
+      // val originalArtistID = tokens(1).toInt
+      // val count = tokens(2).toInt
+      // val artistID = artistAliasBC.value.getOrElse(originalArtistID, originalArtistID)
+      val itemID = tokens(3).hash
+      // Rating(userID, artistID, count)
+      Rating(userID,itemID,1)
     }
   }
 
   def model(
       sc: SparkContext,
-      rawUserArtistData: RDD[String],
-      rawArtistData: RDD[String],
-      rawArtistAlias: RDD[String]): Unit = {
+      // rawUserArtistData: RDD[String],
+      // rawArtistData: RDD[String],
+      // rawArtistAlias: RDD[String]): Unit = {
+      rawreads: RDD[String]: Unit = { 
+    // val artistAliasBC = sc.broadcast(buildArtistAlias(rawArtistAlias))
 
-    val artistAliasBC = sc.broadcast(buildArtistAlias(rawArtistAlias))
-
-    val trainData = buildRatings(rawUserArtistData, artistAliasBC).cache()
-
+    // val trainData = buildRatings(rawUserArtistData, artistAliasBC).cache()
+    val trainData = buildRatings(rawreads).cache()
     val model = ALS.trainImplicit(trainData, 10, 5, 0.01, 1.0)
 
-    trainData.unpersist()
+    // trainData.unpersist()
 
-    model.userFeatures.mapValues(java.util.Arrays.toString).take(3).foreach(println)
+    // model.userFeatures.mapValues(java.util.Arrays.toString).take(3).foreach(println)
 
-    val userID = 2093760
-    val recommendations = model.recommendProducts(userID, 5)
-    recommendations.foreach(println)
-    val recommendedProductIDs = recommendations.map(_.product).toSet
+    // val userID = 2093760
+    // val recommendations = model.recommendProducts(userID, 5)
+    // recommendations.foreach(println)
+    // val recommendedProductIDs = recommendations.map(_.product).toSet
 
-    val existingProductIDs = rawUserArtistData.map(_.split(' ')).
-      filter(_(0).toInt == userID).map(_(1).toInt).collect().toSet
+    // val existingProductIDs = rawUserArtistData.map(_.split(' ')).
+    //   filter(_(0).toInt == userID).map(_(1).toInt).collect().toSet
 
-    val artistByID = buildArtistByID(rawArtistData)
+    // val artistByID = buildArtistByID(rawArtistData)
 
-    artistByID.filter(idName => existingProductIDs.contains(idName._1)).
-      values.collect().sorted.foreach(println)
-    artistByID.filter(idName => recommendedProductIDs.contains(idName._1)).
-      values.collect().sorted.foreach(println)
+    // artistByID.filter(idName => existingProductIDs.contains(idName._1)).
+    //   values.collect().sorted.foreach(println)
+    // artistByID.filter(idName => recommendedProductIDs.contains(idName._1)).
+    //   values.collect().sorted.foreach(println)
 
-    unpersist(model)
+     unpersist(model)
   }
 
   def areaUnderCurve(
@@ -196,11 +207,13 @@ object RunRecommender {
 
   def evaluate(
       sc: SparkContext,
-      rawUserArtistData: RDD[String],
-      rawArtistAlias: RDD[String]): Unit = {
-    val artistAliasBC = sc.broadcast(buildArtistAlias(rawArtistAlias))
+      // rawUserArtistData: RDD[String],
+      // rawArtistAlias: RDD[String]): Unit = {
+      rawreads: RDD[String]): Unit = {
+    // val artistAliasBC = sc.broadcast(buildArtistAlias(rawArtistAlias))
 
-    val allData = buildRatings(rawUserArtistData, artistAliasBC)
+    // val allData = buildRatings(rawUserArtistData, artistAliasBC)
+    val allData = buildRatings(rawreads)
     val trainAndCV = allData.randomSplit(Array(0.9, 0.1))
 
     val trainData = trainAndCV(0).cache()
@@ -230,30 +243,31 @@ object RunRecommender {
 
   def recommend(
       sc: SparkContext,
-      rawUserArtistData: RDD[String],
-      rawArtistData: RDD[String],
-      rawArtistAlias: RDD[String]): Unit = {
-
-    val artistAliasBC = sc.broadcast(buildArtistAlias(rawArtistAlias))
-    val allData = buildRatings(rawUserArtistData, artistAliasBC).cache()
+      // rawUserArtistData: RDD[String],
+      // rawArtistData: RDD[String],
+      // rawArtistAlias: RDD[String]): Unit = {
+      rawreads: RDD[String]): Unit = {
+    //val artistAliasBC = sc.broadcast(buildArtistAlias(rawArtistAlias))
+    //val allData = buildRatings(rawUserArtistData, artistAliasBC).cache()
+    val allData = buildRatings(rawreads).cache()
     val model = ALS.trainImplicit(allData, 50, 10, 1.0, 40.0)
     allData.unpersist()
 
-    val userID = 2093760
-    val recommendations = model.recommendProducts(userID, 5)
-    val recommendedProductIDs = recommendations.map(_.product).toSet
+    // val userID = 2093760
+    // val recommendations = model.recommendProducts(userID, 5)
+    // val recommendedProductIDs = recommendations.map(_.product).toSet
 
-    val artistByID = buildArtistByID(rawArtistData)
+    // val artistByID = buildArtistByID(rawArtistData)
 
-    artistByID.filter(idName =>
-      recommendedProductIDs.contains(idName._1)
-    ).values.collect().sorted.foreach(println)
+    // artistByID.filter(idName =>
+    //   recommendedProductIDs.contains(idName._1)
+    // ).values.collect().sorted.foreach(println)
 
-    val someUsers = allData.map(_.user).distinct().take(100)
-    val someRecommendations = someUsers.map(userID => model.recommendProducts(userID, 5))
-    someRecommendations.map(
-      recs => recs(0).user + " -> " + recs.map(_.product).mkString(",")
-    ).foreach(println)
+    // val someUsers = allData.map(_.user).distinct().take(100)
+    // val someRecommendations = someUsers.map(userID => model.recommendProducts(userID, 5))
+    // someRecommendations.map(
+    //   recs => recs(0).user + " -> " + recs.map(_.product).mkString(",")
+    // ).foreach(println)
 
     unpersist(model)
   }
